@@ -394,8 +394,16 @@
       if(labelsArr.length > 30){ labelsArr.shift(); dataI.shift(); dataU.shift(); }
       realtimeChart.update();
     },1000);
+    
+    function openSection(id){
+      document.getElementById(id).scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
 
   </script>
 
 </body>
 </html>
+
