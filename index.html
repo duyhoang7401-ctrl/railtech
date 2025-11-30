@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RailTech Blue — IoT Railway Dashboard</title>
+
+  <!-- Tailwind (CDN quick) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+  <style>
+    :root {
+      --accent: #0ea5e9;
+      --accent-2: #0369a1;
+      --glass: rgba(255,255,255,0.06);
+    }
+    html,body { height:100%; }
+    body { font-family: Inter, system-ui; margin:0; color:#e6eef7; background:#071028; }
+
+    .bg-video { position: fixed; inset:0; z-index:-1; overflow:hidden; }
+    .bg-video video {
+      width:100%; height:100%;
+      object-fit:cover;
+      filter: brightness(.5) saturate(1.05) contrast(.95);
+    }
+
+    .glass {
+      backdrop-filter: blur(6px) saturate(.9);
+      background: linear-gradient(180deg, rgba(6,21,44,0.45), rgba(3,10,23,0.55));
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 12px;
+    }
+
+    .light-on {
+      box-shadow: 0 0 10px currentColor;
+      transition: 0.25s;
+    }
+
+    .nav-item:hover { color:white; transform:translateY(-2px); transition:0.18s; }
+
+    /* POPUP */
+    #loginModal {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body class="overflow-hidden">
+
+  <!-- Background video -->
+  <div class="bg-video">
+    <video autoplay muted loop playsinline>
+      <source src="https://cdn.jsdelivr.net/gh/johnjleider/rail-video@main/rail-streaks.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <!-- NAVBAR -->
+  <nav class="w-full py-4">
+    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="text-2xl font-bold" style="color:var(--accent)">🚉 RailTech</div>
+        <div class="text-sm text-slate-100/60">IoT Monitoring</div>
+      </div>
+
+      <div id="navRight" class="flex items-center gap-4">
+        <button id="btnLogin" class="px-3 py-1 text-sm rounded bg-gradient-to-r from-sky-500 to-cyan-400 text-slate-900 font-semibold">
+          Đăng nhập
+        </button>
+        <button id="btnLogout" class="px-3 py-1 text-sm rounded bg-red-500 hidden font-semibold">
+          Đăng xuất
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- POPUP LOGIN -->
+  <div id="loginModal">
+    <div class="glass p-6 w-80">
+      <h2 class="text-xl font-bold mb-4 text-center">Đăng nhập</h2>
+
+      <input id="emailInput" class="w-full mb-3 p-2 rounded bg-slate-800 text-white" placeholder="Email">
+      <input id="passInput" type="password" class="w-full mb-4 p-2 rounded bg-slate-800 text-white" placeholder="Mật khẩu">
+
+      <button id="btnDoLogin" class="w-full py-2 rounded bg-gradient-to-r from-sky-500 to-cyan-400 text-slate-900 font-bold">
+        Đăng nhập
+      </button>
+
+      <p id="loginError" class="text-red-400 text-sm mt-2 text-center"></p>
+
+      <button onclick="closeLogin()" class="w-full mt-3 text-slate-300 hover:text-white">Đóng</button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT (bị ẩn khi chưa login) -->
+  <div id="mainContent" class="opacity-0 pointer-events-none transition-all duration-500">
+    <!-- ========= Toàn bộ dashboard cũ của bạn nằm từ đây xuống ========= -->
+    <!-- (Mình không chỉnh sửa bất kỳ phần hiển thị nào) -->
+
+
+    <!-- ===================== HERO ====================== -->
+    <header id="home" class="max-w-7xl mx-auto px-4 py-12">
+      <div class="glass p-8 flex flex-col md:flex-row gap-6 items-center">
+        <div class="flex-1">
+          <h1 class="text-5xl font-extrabold leading-snug">
+            HỆ THỐNG GIÁM SÁT <span style="color:var(--accent)"> <br> ĐƯỜNG RAY</span><br />
+            <small class="text-slate-300/70 text-base font-medium">Giám sát thời gian thực — Điều khiển từ xa — Báo động thông minh</small>
+          </h1>
+
+          <p class="mt-4 text-slate-200/70 max-w-xl">
+            Nền tảng RailTech theo dõi block, cảnh báo gãy ray, và điều khiển thiết bị từ xa thông qua Firebase Realtime Database.
+          </p>
+
+          <div class="mt-6 flex gap-3">
+            <button onclick="openSection('metrics')" class="px-5 py-3 rounded bg-gradient-to-r from-sky-500 to-cyan-400 text-slate-900 font-semibold shadow">
+              Xem Thông số
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+
+    <!-- ===================== METRICS ===================== -->
+    <section id="metrics" class="max-w-7xl mx-auto px-4 py-8">
+      <div class="glass p-6">
+        <h2 class="text-2xl font-bold">Thông số chi tiết</h2>
+
+        <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          <div class="p-4 glass" style="height:320px;">
+            <h4 class="font-semibold mb-2">Biểu đồ dòng điện & điện áp (Realtime)</h4>
+            <canvas id="chartTemp"></canvas>
+          </div>
+
+          <div class="p-4 glass" style="height:320px;">
+            <h4 class="font-semibold">Trạng thái hoạt động của RL</h4>
+            <div id="feed" class="space-y-2 max-h-64 overflow-auto mt-2"></div>
+          </div>
+
+          <div class="p-4 glass" style="height:320px;">
+            <h4 class="font-semibold">Lịch sử lỗi</h4>
+            <div id="blocksList" class="space-y-2"></div>
+          </div>
+
+        </div>
+
+        <!-- 🔥 DỮ LIỆU REALTIME -->
+        <div class="p-4 glass mt-6">
+          <h4 class="font-semibold text-xl mb-3">Trạng thái thiết bị (Realtime)</h4>
+
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <div class="text-sm text-slate-300">ID thiết bị</div>
+              <div id="valID" class="text-2xl font-bold text-cyan-300">—</div>
+            </div>
+
+            <div>
+              <div class="text-sm text-slate-300">Trạng thái đèn báo (RL)</div>
+              <div id="valRL" class="text-lg font-bold mt-1 text-cyan-300">—</div>
+
+              <div class="flex gap-3 mt-2">
+                  <div id="lightGreen" 
+                      style="width:25px;height:25px;border-radius:50%;background-color:gray;">
+                  </div>
+                  <div id="lightRed" 
+                      style="width:25px;height:25px;border-radius:50%;background-color:gray;">
+                  </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-sm text-slate-300">Trạng thái (STT)</div>
+              <div id="valSTT" class="text-2xl font-bold text-cyan-300">—</div>
+            </div>
+
+            <div>
+              <div class="text-sm text-slate-300">Dòng điện (I)</div>
+              <div id="valI" class="text-2xl font-bold text-cyan-300">—</div>
+            </div>
+
+            <div>
+              <div class="text-sm text-slate-300">Điện áp (U)</div>
+              <div id="valU" class="text-2xl font-bold text-cyan-300">—</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+    
+    <!-- POPUP CẢNH BÁO -->
+    <div id="warningPopup" class="fixed inset-0 bg-black/60 backdrop-blur-md hidden flex items-center justify-center z-50">
+      <div class="bg-white text-red-600 p-6 rounded-xl shadow-2xl w-96 text-center">
+        <h2 class="text-2xl font-bold mb-4">⚠ CẢNH BÁO KHẨN</h2>
+        <p class="mb-6 text-lg">Yêu cầu dừng cảnh báo!!!</p>
+
+        <div class="flex gap-4 justify-center">
+          <button id="btnCancelWarning"
+            class="px-4 py-2 rounded-lg bg-gray-300 text-black hover:bg-gray-400">
+            Tắt cảnh báo
+          </button>
+
+          <button id="btnKeepWarning"
+            class="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">
+            Tiếp tục
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- end mainContent -->
+
+  <!-- ====================== JS ====================== -->
+  <script>
+    /* ---------------- FIREBASE CONFIG ---------------- */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBL7jEwo1lkuz94XfWdlwumX0PQ5ZwBWYQ",
+      authDomain: "btl-iot-3a7f2.firebaseapp.com",
+      databaseURL: "https://btl-iot-3a7f2-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "btl-iot-3a7f2",
+      storageBucket: "btl-iot-3a7f2.firebasestorage.app",
+      messagingSenderId: "128707663145",
+      appId: "1:128707663145:web:5f0f77efd0a810e6305338"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const db = firebase.database();
+    const auth = firebase.auth();
+
+    /* ---------------- AUTH ---------------- */
+    const loginModal = document.getElementById("loginModal");
+    const mainContent = document.getElementById("mainContent");
+    const btnLogin = document.getElementById("btnLogin");
+    const btnLogout = document.getElementById("btnLogout");
+
+    btnLogin.onclick = () => { loginModal.style.display = "flex"; };
+    function closeLogin(){ loginModal.style.display = "none"; }
+
+    document.getElementById("btnDoLogin").onclick = () => {
+      const email = document.getElementById("emailInput").value;
+      const pass = document.getElementById("passInput").value;
+
+      auth.signInWithEmailAndPassword(email, pass)
+      .then(() => {
+        loginModal.style.display = "none";
+      })
+      .catch(err => {
+        document.getElementById("loginError").innerText = "Sai tài khoản hoặc mật khẩu";
+      });
+    };
+
+    btnLogout.onclick = () => auth.signOut();
+
+    // Theo dõi trạng thái đăng nhập
+    auth.onAuthStateChanged(user => {
+      if(user){
+        mainContent.classList.remove("opacity-0", "pointer-events-none");
+        btnLogin.classList.add("hidden");
+        btnLogout.classList.remove("hidden");
+        document.body.classList.remove("overflow-hidden");
+      } else {
+        mainContent.classList.add("opacity-0", "pointer-events-none");
+        btnLogin.classList.remove("hidden");
+        btnLogout.classList.add("hidden");
+        document.body.classList.add("overflow-hidden");
+        loginModal.style.display = "flex";
+      }
+    });
+
+
+    /* ---------------- REALTIME DB (giữ nguyên của bạn) ---------------- */
+    const feedDiv = document.getElementById("feed");
+    const blocksDiv = document.getElementById("blocksList");
+
+    let lastRL = null;
+    let lastSTT = null;
+
+    function updateFeed(RL){
+      if(RL === lastRL) return;
+      lastRL = RL;
+
+      const now = new Date().toLocaleString("vi-VN"); 
+      div.textContent = `${now} → ${RL ? "Bật" : "Tắt"}`;
+      div.style.color = RL ? "lime" : "red";
+      feedDiv.prepend(div);
+
+      if(feedDiv.children.length > 20)
+        feedDiv.removeChild(feedDiv.lastChild);
+    }
+
+
+    function addErrorLog(STT){
+      if (STT !== "ER" || STT === lastSTT) return;
+      lastSTT = STT;
+
+      const now = new Date().toLocaleString("vi-VN");
+      const div = document.createElement("div");
+      div.textContent = `${now} → Lỗi hệ thống`;
+      div.style.color = "red";
+
+      blocksDiv.prepend(div);
+
+      if (blocksDiv.children.length > 20)
+        blocksDiv.removeChild(blocksDiv.lastChild);
+    }
+
+
+    const rootRef = db.ref("/");
+    rootRef.on("value", snap => {
+      const data = snap.val();
+      if(!data) return;
+        const NOTIC = data.NOTIC;
+        const ERR = data.ERR;
+
+        const warningPopup = document.getElementById("warningPopup");
+
+    // --- HIỂN THỊ POPUP KHI CÓ CẢNH BÁO ---
+        if (NOTIC === true && ERR === true) {
+          warningPopup.classList.remove("hidden");
+        } else {
+          warningPopup.classList.add("hidden");
+        }
+
+        document.getElementById("valI").textContent = (data.I ?? "—") + (data.I != null ? " A" : "");
+        document.getElementById("valU").textContent = (data.V ?? "—") + (data.V != null ? " V" : "");
+        document.getElementById("valID").textContent = data.ID ?? "—";
+        document.getElementById("valSTT").textContent = data.STT ?? "—";
+      
+      if(data.RL){
+        document.getElementById("valRL").textContent = "Green";
+        document.getElementById("valRL").style.color = "green";
+        document.getElementById("lightGreen").style.backgroundColor = "green";
+        document.getElementById("lightRed").style.backgroundColor = "gray";
+      } else {
+        document.getElementById("valRL").textContent = "Red";
+        document.getElementById("valRL").style.color = "red";
+        document.getElementById("lightGreen").style.backgroundColor = "gray";
+        document.getElementById("lightRed").style.backgroundColor = "red";
+      }
+
+      updateFeed(data.RL);
+      addErrorLog(data.STT);
+    });
+    
+    const btnCancelWarning = document.getElementById("btnCancelWarning");
+    const btnKeepWarning = document.getElementById("btnKeepWarning");
+
+    // Tắt cảnh báo → NOTIC = false
+    btnCancelWarning.addEventListener("click", () => {
+      firebase.database().ref("NOTIC").set(false);
+      firebase.database().ref("ERR").set(false);
+    });
+
+    // Giữ cảnh báo → NOTIC = true
+    btnKeepWarning.addEventListener("click", () => {
+      firebase.database().ref("NOTIC").set(false);
+      firebase.database().ref("ERR").set(true);
+    });
+
+
+    /* ---------------- BIỂU ĐỒ REALTIME ---------------- */
+    const ctx = document.getElementById("chartTemp").getContext("2d");
+    let labelsArr = [], dataI = [], dataU = [];
+
+    const realtimeChart = new Chart(ctx, {
+      type: "line",
+      data: { labels: labelsArr,
+        datasets:[
+          { label:"Dòng điện (A)", data:dataI, borderColor:"red", borderWidth:2, tension:0.2 },
+          { label:"Điện áp (V)", data:dataU, borderColor:"cyan", borderWidth:2, tension:0.2 }
+        ]
+      },
+      options: { animation:false, responsive:true, maintainAspectRatio:false }
+    });
+
+    let currentI = 0, currentU = 0;
+    db.ref("I").on("value", s => currentI = s.val() ?? 0);
+    db.ref("V").on("value", s => currentU = s.val() ?? 0);
+
+    setInterval(()=>{
+      const now = new Date().toLocaleTimeString();
+      labelsArr.push(now); dataI.push(currentI); dataU.push(currentU);
+      if(labelsArr.length > 30){ labelsArr.shift(); dataI.shift(); dataU.shift(); }
+      realtimeChart.update();
+    },1000);
+
+  </script>
+
+</body>
+</html>
